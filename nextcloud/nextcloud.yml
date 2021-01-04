@@ -1,0 +1,92 @@
+version: '3.5'
+
+services:
+  db:
+    image: postgres:alpine
+    restart: always
+    volumes:
+      - db:/var/lib/postgresql/data
+    env_file:
+      - db.env
+
+  app:
+    image: nextcloud:apache
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html
+    environment:
+      - VIRTUAL_HOST=nextcloud.${DOMAIN}
+      - LETSENCRYPT_HOST=nextcloud.${DOMAIN}
+      - LETSENCRYPT_EMAIL=${EMAIL}
+      - POSTGRES_HOST=db
+    env_file:
+      - db.env
+    depends_on:
+      - db
+    networks:
+      - proxy-tier
+      - default
+
+  onlyoffice-documentserver:
+    image: onlyoffice/documentserver:latest
+    depends_on:
+      - onlyoffice-postgresql
+      - onlyoffice-rabbitmq
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=onlyoffice-postgresql
+      - DB_PORT=5432
+      - DB_NAME=onlyoffice
+      - DB_USER=onlyoffice
+      - AMQP_URI=amqp://guest:guest@onlyoffice-rabbitmq
+      - VIRTUAL_HOST=onlyoffice.${DOMAIN}
+      - LETSENCRYPT_HOST=onlyoffice.${DOMAIN}
+      - LETSENCRYPT_EMAIL=${EMAIL}
+      - JWT_ENABLED=true
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+    stdin_open: true
+    restart: always
+    expose:
+      - '80'
+      - '443'
+    networks:
+      - proxy-tier
+      - default
+    volumes:
+       - /var/www/onlyoffice/Data
+       - /var/log/onlyoffice
+       - /var/lib/onlyoffice/documentserver/App_Data/cache/files
+       - /var/www/onlyoffice/documentserver-example/public/files
+       - /usr/share/fonts
+
+  onlyoffice-rabbitmq:
+    container_name: onlyoffice-rabbitmq
+    image: rabbitmq
+    restart: always
+    expose:
+      - '5672'
+
+  onlyoffice-postgresql:
+    container_name: onlyoffice-postgresql
+    image: postgres:9.5
+    environment:
+      - POSTGRES_DB=onlyoffice
+      - POSTGRES_USER=onlyoffice
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    restart: always
+    expose:
+      - '5432'
+    volumes:
+      - postgresql_data:/var/lib/postgresql
+
+volumes:
+  db:
+  nextcloud:
+  html:
+  postgresql_data:
+
+networks:
+  proxy-tier:
+    name: proxy_net
